@@ -1,27 +1,41 @@
-using System;
-using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
 
-public class IKMouseController : MonoBehaviour
+public class IKTargetMouseFollow : MonoBehaviour
 {
-    public Transform IkTarget;
-    private Camera mainCamera;
+    public Rigidbody2D rb;
+    public float followSpeed = 10f;
 
-    private void Start()
-    {
-        mainCamera = Camera.main;
-    }
+    // Define the maximum allowed chain length.
+    public float chainLength = 5f;
 
-    private void Update()
-    {
-        Control();
-    }
+    // The base transform from which the chain's reach is measured.
+    public Transform baseTransform;
 
-    private void Control()
+    void Update()
     {
-        Vector3 Mouspos = mainCamera.ScreenToWorldPoint(Input.mousePosition);
-        Mouspos.z = 0;
-        transform.position = Mouspos;
+        // Get the mouse position in world coordinates.
+        Vector2 mousePos = Camera.main.ScreenToWorldPoint(Input.mousePosition);
+
+        if (baseTransform != null)
+        {
+            Vector2 basePos = baseTransform.position;
+            Vector2 dirFromBase = mousePos - basePos;
+            float distance = dirFromBase.magnitude;
+
+            // Draw a red debug ray from the base position, showing the allowed chain length.
+            Debug.DrawRay(basePos, dirFromBase.normalized * chainLength, Color.red);
+
+            // Clamp the target if it exceeds the chain length.
+            if (distance > chainLength)
+            {
+                mousePos = basePos + dirFromBase.normalized * chainLength;
+            }
+        }
+
+        // Calculate the movement direction from the current rigidbody position.
+        Vector2 moveDir = mousePos - rb.position;
+
+        // Move the rigidbody toward the (possibly clamped) target.
+        rb.velocity = moveDir * followSpeed;
     }
 }

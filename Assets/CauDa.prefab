@@ -219,6 +219,8 @@ MonoBehaviour:
   rotationLerpSpeed: 5
   windForce: {x: 0, y: 0}
   impactMultiplier: 1
+  maxUpwardSpeed: 44.2
+  maxSpeed: 30
 --- !u!61 &10539441387944882
 BoxCollider2D:
   m_ObjectHideFlags: 0

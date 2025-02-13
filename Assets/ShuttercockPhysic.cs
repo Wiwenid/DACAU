@@ -38,8 +38,7 @@ public class JianziPhysics : MonoBehaviour
     void Awake()
     {
         rb = GetComponent<Rigidbody2D>();
-        // Set collision detection to Continuous Speculative for better collision handling on fast-moving objects.
-        rb.collisionDetectionMode = CollisionDetectionMode2D.ContinuousSpeculative;
+       
     }
 
     void FixedUpdate()
