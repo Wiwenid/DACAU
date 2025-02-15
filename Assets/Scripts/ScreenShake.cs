@@ -1,4 +1,5 @@
 using UnityEngine;
+using Cinemachine;
 using System.Collections;
 
 public class ScreenShake2D : MonoBehaviour
@@ -8,53 +9,76 @@ public class ScreenShake2D : MonoBehaviour
     public float baseShakeDuration = 0.2f; // Minimum shake duration
     public float maxShakeDuration = 0.5f; // Maximum shake duration
 
-    private Vector3 originalPosition;
+    private CinemachineVirtualCamera virtualCam;
+    private CinemachineBasicMultiChannelPerlin noise;
+    private Coroutine shakeCoroutine;
 
-    private void OnEnable()
+    private void Awake()
     {
-        // Subscribe to the collision event
-        JianziCollider.OnCollisionEntered += StartShake;
+        // Find the Cinemachine Virtual Camera 2D in the scene
+        virtualCam = FindObjectOfType<CinemachineVirtualCamera>();
+
+        if (virtualCam == null)
+        {
+            Debug.LogWarning("[ScreenShake2D] WARNING: No Cinemachine 2D Virtual Camera found! Screen shake will be disabled.");
+            return; // Exit early to prevent errors
+        }
+
+        // Get the Noise component for screen shake
+        noise = virtualCam.GetCinemachineComponent<CinemachineBasicMultiChannelPerlin>();
+        if (noise == null)
+        {
+            Debug.LogWarning("[ScreenShake2D] WARNING: CinemachineBasicMultiChannelPerlin not found on Virtual Camera! Screen shake will not work.");
+        }
     }
 
-    private void OnDisable()
+    public void StartShake(float impactForce)
     {
-        // Unsubscribe from the event
-        JianziCollider.OnCollisionEntered -= StartShake;
-    }
+        if (virtualCam == null || noise == null)
+        {
+            Debug.LogWarning("[ScreenShake2D] WARNING: Shake attempted but Virtual Camera or Noise component is missing.");
+            return;
+        }
 
-    private void StartShake(float impactForce)
-    {
-        // Normalize the impact force (Clamp between 0 and 1)
         float normalizedForce = Mathf.Clamp01(impactForce / 10f); // Adjust divisor for scaling
         float shakeMagnitude = Mathf.Lerp(baseShakeMagnitude, maxShakeMagnitude, normalizedForce);
         float shakeDuration = Mathf.Lerp(baseShakeDuration, maxShakeDuration, normalizedForce);
 
-        StartCoroutine(Shake(shakeMagnitude, shakeDuration));
+        if (shakeCoroutine != null)
+            StopCoroutine(shakeCoroutine);
+
+        shakeCoroutine = StartCoroutine(Shake(shakeMagnitude, shakeDuration));
     }
 
     private IEnumerator Shake(float magnitude, float duration)
     {
-        originalPosition = Camera.main.transform.position;
+        if (noise == null)
+        {
+            Debug.LogWarning("[ScreenShake2D] WARNING: Shake coroutine stopped - Noise component is null!");
+            yield break;
+        }
+
+        noise.m_AmplitudeGain = magnitude;
         float elapsed = 0f;
 
         while (elapsed < duration)
         {
-            float xOffset = Random.Range(-1f, 1f) * magnitude;
-            float yOffset = Random.Range(-1f, 1f) * magnitude;
-
-            Camera.main.transform.position = new Vector3(originalPosition.x + xOffset, originalPosition.y + yOffset, originalPosition.z);
             elapsed += Time.deltaTime;
-
             yield return null;
         }
 
-        // Smoothly return to the original position
-        while (Vector3.Distance(Camera.main.transform.position, originalPosition) > 0.01f)
+        // Smooth fade-out of screen shake
+        float fadeTime = 0.2f;
+        float fadeElapsed = 0f;
+        float startMagnitude = noise.m_AmplitudeGain;
+
+        while (fadeElapsed < fadeTime)
         {
-            Camera.main.transform.position = Vector3.Lerp(Camera.main.transform.position, originalPosition, 10f * Time.deltaTime);
+            noise.m_AmplitudeGain = Mathf.Lerp(startMagnitude, 0f, fadeElapsed / fadeTime);
+            fadeElapsed += Time.deltaTime;
             yield return null;
         }
 
-        Camera.main.transform.position = originalPosition;
+        noise.m_AmplitudeGain = 0f;
     }
 }

@@ -25,11 +25,11 @@ public class JianziPhysics : MonoBehaviour
     [Tooltip("Optional wind force that can be applied (set to zero if not used).")]
     public Vector2 windForce = Vector2.zero;
 
-    [Header("Impact Response")]
-    [Tooltip("Multiplier for the impact’s vertical speed to set the upward velocity.")]
-    public float impactMultiplier = 1f;
-    [Tooltip("The maximum upward speed allowed after an impact.")]
-    public float maxUpwardSpeed = 20f;
+    [Header("Downforce Settings")]
+    [Tooltip("A coefficient to adjust the magnitude of aerodynamic downforce.")]
+    public float downforceCoefficient = 1.0f;
+    [Tooltip("The maximum allowed downward speed.")]
+    public float maxDownwardSpeed = 30f;
 
     [Header("Velocity Limits")]
     [Tooltip("The maximum allowed overall speed for the Jianzi to prevent tunneling.")]
@@ -38,17 +38,23 @@ public class JianziPhysics : MonoBehaviour
     void Awake()
     {
         rb = GetComponent<Rigidbody2D>();
-       
     }
 
     void FixedUpdate()
     {
         ApplyAerodynamicDrag();
         ApplyWindForce();
+        ApplyDownforce();
         AlignRotationToVelocity();
 
         // Clamp overall velocity to prevent tunneling issues.
         rb.velocity = Vector2.ClampMagnitude(rb.velocity, maxSpeed);
+
+        // Clamp the downward speed (y-axis) to the maximum allowed.
+        if (rb.velocity.y < -maxDownwardSpeed)
+        {
+            rb.velocity = new Vector2(rb.velocity.x, -maxDownwardSpeed);
+        }
     }
 
     /// <summary>
@@ -80,38 +86,42 @@ public class JianziPhysics : MonoBehaviour
     }
 
     /// <summary>
+    /// Applies aerodynamic downforce based on the Jianzi’s current velocity.
+    /// Formula: F_downforce = 0.5 * airDensity * speed^2 * downforceCoefficient * frontalArea
+    /// This force is always applied downward.
+    /// </summary>
+    void ApplyDownforce()
+    {
+        float speed = rb.velocity.magnitude;
+        if (speed > 0.01f)
+        {
+            float downforceMagnitude = 0.5f * airDensity * speed * speed * downforceCoefficient * frontalArea;
+            rb.AddForce(Vector2.down * downforceMagnitude);
+        }
+    }
+
+    /// <summary>
     /// Aligns the Jianzi’s rotation with its velocity vector.
     /// </summary>
     void AlignRotationToVelocity()
     {
         Vector2 velocity = rb.velocity;
-        if (velocity.magnitude > 0.1f)
+        float speed = velocity.magnitude;
+    
+        // Only adjust rotation if there is enough movement.
+        if (speed > 0.1f)
         {
             float targetAngle = Mathf.Atan2(velocity.y, velocity.x) * Mathf.Rad2Deg + offset;
-            float newRotation = Mathf.LerpAngle(rb.rotation, targetAngle, rotationLerpSpeed * Time.fixedDeltaTime);
+        
+            // Calculate a lerp factor that scales with the speed.
+            // When speed is at maxSpeed, the factor equals rotationLerpSpeed * Time.fixedDeltaTime,
+            // and when speed is low, the factor becomes small.
+            float lerpFactor = rotationLerpSpeed * (speed / maxSpeed) * Time.fixedDeltaTime;
+            lerpFactor = Mathf.Clamp01(lerpFactor);  // Ensure the factor stays between 0 and 1.
+        
+            float newRotation = Mathf.LerpAngle(rb.rotation, targetAngle, lerpFactor);
             rb.MoveRotation(newRotation);
         }
     }
 
-    /// <summary>
-    /// Custom collision response to adjust the upward speed based on the impact.
-    /// </summary>
-    void OnCollisionEnter2D(Collision2D collision)
-    {
-        foreach (ContactPoint2D contact in collision.contacts)
-        {
-            // Check if the contact normal indicates an impact from below.
-            if (contact.normal.y > 0.5f)
-            {
-                float impactVerticalSpeed = Mathf.Abs(collision.relativeVelocity.y);
-                float desiredUpwardSpeed = impactVerticalSpeed * impactMultiplier;
-                desiredUpwardSpeed = Mathf.Clamp(desiredUpwardSpeed, 0, maxUpwardSpeed);
-
-                // Set the new velocity while preserving the horizontal component.
-                Vector2 newVelocity = new Vector2(rb.velocity.x, desiredUpwardSpeed);
-                rb.velocity = newVelocity;
-                break;
-            }
-        }
-    }
 }
