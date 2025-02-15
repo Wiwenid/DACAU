@@ -35,6 +35,14 @@ public class Scoreboard : MonoBehaviour
             Instance.UpdateScoreText();
         }
     }
+    public static void ResetScore()
+    {
+        if (Instance != null)
+        {
+            Instance.score = 0;
+            Instance.UpdateScoreText();
+        }
+    }
 
     private void UpdateScoreText()
     {

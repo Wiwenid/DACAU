@@ -30,7 +30,6 @@ public class JianziCollider : MonoBehaviour
     
     private void OnCollisionEnter2D(Collision2D collision)
     {
-        // Cooldown check
         if (Time.time - lastCollisionTime < cooldownTime)
             return;
         
@@ -76,7 +75,6 @@ public class JianziCollider : MonoBehaviour
                 }
             }
             
-            // All conditions met: register the collision.
             if (particleSystem != null)
             {
                 particleSystem.Play();
@@ -90,6 +88,7 @@ public class JianziCollider : MonoBehaviour
             {
                 transform.position = JianziOriginalTransform;
                 rb.velocity = Vector2.zero;
+                Scoreboard.ResetScore();
             }
         }
     }

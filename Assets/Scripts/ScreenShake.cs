@@ -1,84 +1,113 @@
 using UnityEngine;
 using Cinemachine;
-using System.Collections;
 
-public class ScreenShake2D : MonoBehaviour
+public class Cinemachine2DCameraShake : MonoBehaviour
 {
-    public float baseShakeMagnitude = 0.1f; // Base intensity for small impacts
-    public float maxShakeMagnitude = 0.5f; // Max shake intensity for high impacts
-    public float baseShakeDuration = 0.2f; // Minimum shake duration
-    public float maxShakeDuration = 0.5f; // Maximum shake duration
+    [Header("References")]
+    [SerializeField] private CinemachineVirtualCamera virtualCamera;
 
-    private CinemachineVirtualCamera virtualCam;
+    [Header("Shake Duration")]
+    [SerializeField] private float shakeDuration = 0.5f;
+    private float shakeTimer;
+
+    [Header("Amplitude Settings")]
+    [SerializeField] private float minAmplitude = 1f;      // Minimum amplitude at low impact
+    [SerializeField] private float maxAmplitude = 5f;      // Maximum amplitude at high impact
+
+    [Header("Frequency Settings")]
+    [SerializeField] private float minFrequency = 1f;      // Minimum frequency at low impact
+    [SerializeField] private float maxFrequency = 5f;      // Maximum frequency at high impact
+
+    [Header("Impact Range for Mapping")]
+    [SerializeField] private float minImpact = 10f;        // Impact force that triggers minAmplitude
+    [SerializeField] private float maxImpact = 30f;        // Impact force that triggers maxAmplitude
+
+    [Header("Damping Settings")]
+    [Tooltip("How quickly amplitude and frequency drop during the shake.")]
+    [SerializeField] private float dampingSpeed = 1f;      // Larger = faster fade out
+
     private CinemachineBasicMultiChannelPerlin noise;
-    private Coroutine shakeCoroutine;
+    private float originalAmplitude;
+    private float targetAmplitude;
+    private float targetFrequency;
 
     private void Awake()
     {
-        // Find the Cinemachine Virtual Camera 2D in the scene
-        virtualCam = FindObjectOfType<CinemachineVirtualCamera>();
+        if (virtualCamera == null)
+            virtualCamera = GetComponent<CinemachineVirtualCamera>();
 
-        if (virtualCam == null)
+        if (virtualCamera != null)
         {
-            Debug.LogWarning("[ScreenShake2D] WARNING: No Cinemachine 2D Virtual Camera found! Screen shake will be disabled.");
-            return; // Exit early to prevent errors
+            noise = virtualCamera.GetCinemachineComponent<CinemachineBasicMultiChannelPerlin>();
+            if (noise != null)
+            {
+                originalAmplitude = noise.m_AmplitudeGain;
+            }
+            else
+            {
+                Debug.LogWarning("No CinemachineBasicMultiChannelPerlin component found on the virtual camera.");
+            }
         }
-
-        // Get the Noise component for screen shake
-        noise = virtualCam.GetCinemachineComponent<CinemachineBasicMultiChannelPerlin>();
-        if (noise == null)
+        else
         {
-            Debug.LogWarning("[ScreenShake2D] WARNING: CinemachineBasicMultiChannelPerlin not found on Virtual Camera! Screen shake will not work.");
+            Debug.LogError("Virtual Camera reference is missing!");
         }
     }
 
-    public void StartShake(float impactForce)
+    private void OnEnable()
     {
-        if (virtualCam == null || noise == null)
-        {
-            Debug.LogWarning("[ScreenShake2D] WARNING: Shake attempted but Virtual Camera or Noise component is missing.");
+        // Subscribe to the collision event
+        JianziCollider.OnCollisionEntered += StartShake;
+    }
+
+    private void OnDisable()
+    {
+        // Unsubscribe from the collision event
+        JianziCollider.OnCollisionEntered -= StartShake;
+    }
+
+    private void StartShake(float impactForce)
+    {
+        if (noise == null)
             return;
-        }
 
-        float normalizedForce = Mathf.Clamp01(impactForce / 10f); // Adjust divisor for scaling
-        float shakeMagnitude = Mathf.Lerp(baseShakeMagnitude, maxShakeMagnitude, normalizedForce);
-        float shakeDuration = Mathf.Lerp(baseShakeDuration, maxShakeDuration, normalizedForce);
+        shakeTimer = shakeDuration;
 
-        if (shakeCoroutine != null)
-            StopCoroutine(shakeCoroutine);
+        // 1) Map the impactForce to a 0..1 range
+        float t = Mathf.InverseLerp(minImpact, maxImpact, impactForce);
 
-        shakeCoroutine = StartCoroutine(Shake(shakeMagnitude, shakeDuration));
+        // 2) Lerp amplitude and frequency using that normalized factor
+        targetAmplitude = Mathf.Lerp(minAmplitude, maxAmplitude, t);
+        targetFrequency = Mathf.Lerp(minFrequency, maxFrequency, t);
+
+        // Immediately set noise to the chosen amplitude/frequency
+        noise.m_AmplitudeGain = targetAmplitude;
+        noise.m_FrequencyGain = targetFrequency;
     }
 
-    private IEnumerator Shake(float magnitude, float duration)
+    private void Update()
     {
-        if (noise == null)
+        if (noise == null) return;
+
+        if (shakeTimer > 0)
         {
-            Debug.LogWarning("[ScreenShake2D] WARNING: Shake coroutine stopped - Noise component is null!");
-            yield break;
+            shakeTimer -= Time.deltaTime;
+
+            // As time goes on, dampen amplitude & frequency
+            float damper = shakeTimer / shakeDuration; // This goes from 1 down to 0
+
+            float currentAmplitude = Mathf.Lerp(originalAmplitude, targetAmplitude, damper);
+            float currentFrequency = Mathf.Lerp(0, targetFrequency, damper);
+
+            // Optionally apply a damping speed factor to make it drop more quickly
+            noise.m_AmplitudeGain = Mathf.Lerp(noise.m_AmplitudeGain, originalAmplitude, Time.deltaTime * dampingSpeed);
+            noise.m_FrequencyGain = Mathf.Lerp(noise.m_FrequencyGain, 0, Time.deltaTime * dampingSpeed);
         }
-
-        noise.m_AmplitudeGain = magnitude;
-        float elapsed = 0f;
-
-        while (elapsed < duration)
+        else
         {
-            elapsed += Time.deltaTime;
-            yield return null;
+            // Shake ended; reset noise to defaults
+            noise.m_AmplitudeGain = originalAmplitude;
+            noise.m_FrequencyGain = 0;
         }
-
-        // Smooth fade-out of screen shake
-        float fadeTime = 0.2f;
-        float fadeElapsed = 0f;
-        float startMagnitude = noise.m_AmplitudeGain;
-
-        while (fadeElapsed < fadeTime)
-        {
-            noise.m_AmplitudeGain = Mathf.Lerp(startMagnitude, 0f, fadeElapsed / fadeTime);
-            fadeElapsed += Time.deltaTime;
-            yield return null;
-        }
-
-        noise.m_AmplitudeGain = 0f;
     }
 }
